@@ -6,14 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import PDFUpload from '@/components/PDFUpload'
+import PDFDebugger from '@/components/PDFDebugger'
 import { supabase, Transaction } from '@/lib/supabase'
-import { DollarSign, TrendingUp, Calendar, Trash2 } from 'lucide-react'
+import { DollarSign, TrendingUp, Calendar, Trash2, Bug, Upload } from 'lucide-react'
 
 export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [totalSpent, setTotalSpent] = useState(0)
   const [currentMonth, setCurrentMonth] = useState('')
+  const [showDebugMode, setShowDebugMode] = useState(false)
 
   useEffect(() => {
     fetchTransactions()
@@ -57,6 +59,22 @@ export default function Home() {
     }
   }
 
+  const clearAllTransactions = async () => {
+    if (confirm('Are you sure you want to delete all transactions? This cannot be undone.')) {
+      try {
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000') // Delete all
+
+        if (error) throw error
+        fetchTransactions()
+      } catch (error) {
+        console.error('Error clearing transactions:', error)
+      }
+    }
+  }
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -77,6 +95,27 @@ export default function Home() {
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Expense Tracker</h1>
         <p className="text-gray-600">Track your Bank of America expenses</p>
+        
+        <div className="flex justify-center gap-2 mt-4">
+          <Button
+            variant={showDebugMode ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowDebugMode(!showDebugMode)}
+          >
+            <Bug className="h-4 w-4 mr-2" />
+            {showDebugMode ? 'Hide' : 'Show'} Debug Mode
+          </Button>
+          {transactions.length > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={clearAllTransactions}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -118,8 +157,12 @@ export default function Home() {
         </Card>
       </div>
 
-      {/* Upload Section */}
-      <PDFUpload onUploadComplete={fetchTransactions} />
+      {/* Upload/Debug Section */}
+      {showDebugMode ? (
+        <PDFDebugger />
+      ) : (
+        <PDFUpload onUploadComplete={fetchTransactions} />
+      )}
 
       {/* Transactions Table */}
       <Card>
@@ -133,7 +176,14 @@ export default function Home() {
             </div>
           ) : transactions.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <p>No transactions yet. Upload a PDF to get started!</p>
+              <Upload className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p className="text-lg font-medium mb-2">No transactions yet</p>
+              <p className="text-sm">Upload a Bank of America PDF statement to get started!</p>
+              {showDebugMode && (
+                <p className="text-xs text-blue-600 mt-2">
+                  Use Debug Mode above to troubleshoot PDF parsing issues
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -174,6 +224,59 @@ export default function Home() {
           )}
         </CardContent>
       </Card>
+
+      {/* Debug Info */}
+      {showDebugMode && transactions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bug className="h-5 w-5" />
+              Debug Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="font-medium">Total Transactions</p>
+                  <p className="text-2xl font-bold">{transactions.length}</p>
+                </div>
+                <div>
+                  <p className="font-medium">Categories Found</p>
+                  <p className="text-2xl font-bold">
+                    {new Set(transactions.map(t => t.category).filter(Boolean)).size}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium">Date Range</p>
+                  <p className="text-sm">
+                    {transactions.length > 0 && 
+                      `${formatDate(transactions[transactions.length - 1].date)} - ${formatDate(transactions[0].date)}`
+                    }
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium">Avg Amount</p>
+                  <p className="text-lg font-bold">
+                    {formatCurrency(totalSpent / transactions.length || 0)}
+                  </p>
+                </div>
+              </div>
+              
+              <div>
+                <p className="font-medium mb-2">Categories Breakdown:</p>
+                <div className="flex flex-wrap gap-2">
+                  {Array.from(new Set(transactions.map(t => t.category).filter(Boolean))).map(category => (
+                    <Badge key={category} variant="outline">
+                      {category} ({transactions.filter(t => t.category === category).length})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
